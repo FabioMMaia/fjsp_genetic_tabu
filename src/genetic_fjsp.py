@@ -74,6 +74,23 @@ class Population():
                 maxTSIterSize=800, 
                 maxT=9, 
                 selection_mode = 'elitist_selection'):
+        
+        """
+        Initialize the GeneticAlgorithm instance.
+
+        Args:
+        data_time (pd.DataFrame): Data or time-related information.
+        machines (list): List of available machines.
+        Popsize (int): Population size (default: 400).
+        maxGen (int): Total generations (default: 200).
+        maxStagnantStep (int): Max step size with no improvement (default: 20).
+        pr (float): Reproduction probability (default: 0.005).
+        pc (float): Crossover probability (default: 0.8).
+        pm (float): Mutation probability (default: 0.1).
+        maxTSIterSize (int): Max Tabu Search iterations (default: 800).
+        maxT (int): Tabu list length (default: 9).
+        selection_mode (str): Genetic operator selection mode (e.g., 'elitist_selection').
+        """
     
         self.machines = machines
         self.data_time = data_time
@@ -153,6 +170,19 @@ class Population():
         child2 = parent2[:point1] + parent1[point1:point2] + parent2[point2:]
 
         return child1, child2
+    
+    def OS_mutation(self,chromosome):
+        # Make a copy of the original chromosome for mutation
+        mutated_chromosome = chromosome[:]
+        
+        # Step 1: Select two random positions in the chromosome
+        position1 = random.randint(0, len(chromosome) - 1)
+        position2 = random.randint(0, len(chromosome) - 1)
+        
+        # Step 2: Swap the elements at the selected positions
+        mutated_chromosome[position1], mutated_chromosome[position2] = mutated_chromosome[position2], mutated_chromosome[position1]
+        
+        return mutated_chromosome
 
     def pipeline_generation(self):
 
@@ -171,24 +201,31 @@ class Population():
 
             while len(new_pop)< self.Popsize:
                 parents = random.sample(new_pop, 2)
-                # Reproduction
-                child1_OS = self.OS_cross_over_POX(parents[0].OS, parents[1].OS)
-                child2_OS = self.OS_cross_over_POX(parents[1].OS, parents[0].OS)
-                child1_MS,child2_MS  = self.MS_crossover(parents[0].MS, parents[1].MS)
-                # child1_MS = parents[0].MS
-                # child2_MS = parents[1].MS
 
-                child1 = chromossomes_fjsp(self.data_time, 
-                                            self.machines,
-                                            MS = child1_MS,
-                                            OS = child1_OS)
+                # Perform cross over
+                if random.random() < self.pc:
+                    child1_OS = self.OS_cross_over_POX(parents[0].OS, parents[1].OS)
+                    child2_OS = self.OS_cross_over_POX(parents[1].OS, parents[0].OS)
+                    child1_MS,child2_MS  = self.MS_crossover(parents[0].MS, parents[1].MS)
+                    child1 = chromossomes_fjsp(self.data_time, 
+                                                self.machines,
+                                                MS = child1_MS,
+                                                OS = child1_OS)
 
-                child2 = chromossomes_fjsp(self.data_time, 
-                                    self.machines,
-                                    MS = child2_MS,
-                                    OS = child2_OS)
+                    child2 = chromossomes_fjsp(self.data_time, 
+                                        self.machines,
+                                        MS = child2_MS,
+                                        OS = child2_OS)
+                    # Perform mutation
+                    if random.random() < self.pm:
+                       child1.OS = self.OS_mutation(child1.OS)
+                    if random.random() < self.pm:
+                       child2.OS = self.OS_mutation(child2.OS)
                 
-                new_pop += [child1, child2]
+                    new_pop += [child1, child2]
+                
+                else:
+                    new_pop += parents
 
             self.pop = new_pop
             self.update_scores()
