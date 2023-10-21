@@ -5,6 +5,7 @@ import random
 import tqdm
 import sys
 sys.path.insert(1, r".")
+import matplotlib.pyplot as plt
 import pipeline_fjsp
 
 class chromossomes_fjsp():
@@ -183,16 +184,43 @@ class Population():
         mutated_chromosome[position1], mutated_chromosome[position2] = mutated_chromosome[position2], mutated_chromosome[position1]
         
         return mutated_chromosome
+    
+    def plot_score(self):
+        pd.DataFrame(self.scores_values).boxplot();
+        plt.show()
 
-    def pipeline_generation(self):
+    def MS_mutation(self, MS):
 
-        time_series_scores = []
+        pos = np.arange(0,len(MS) )
+        n_half = round(len(pos)/2)
+        selected_pos = random.sample(range(len(pos)), n_half)
+        selected_pos.sort()
+        mutated_chromosome = MS.copy()
+
+        for pos in selected_pos:
+            current_machine = 'M' + str(MS[pos])
+            possible_machines = self.data_time.iloc[pos][self.machines].dropna().index.tolist()
+            possible_machines.remove(current_machine)
+            updated_machine = random.sample(possible_machines, 1)
+            updated_machine = int(updated_machine[0][1:])
+            mutated_chromosome[pos] = updated_machine
+
+        return mutated_chromosome
+
+    def pipeline_generation(self, improvement_threshold = 1):
+
+        scores_mean = []
+        scores_values = {}
         Gen = 0
 
         self.init_pop()
-        time_series_scores.append(self.scores.mean())
+        last_score_mean = self.scores.mean()
+        scores_mean.append(last_score_mean)
+        stagnant_count = 0
 
-        while Gen<self.maxGen:
+        scores_values[Gen] = self.scores
+
+        while Gen<self.maxGen and stagnant_count<self.maxStagnantStep:
 
             # Selection
             selected_genes = self.selection()
@@ -202,35 +230,62 @@ class Population():
             while len(new_pop)< self.Popsize:
                 parents = random.sample(new_pop, 2)
 
-                # Perform cross over
+                # Perform cross over in OS
                 if random.random() < self.pc:
                     child1_OS = self.OS_cross_over_POX(parents[0].OS, parents[1].OS)
                     child2_OS = self.OS_cross_over_POX(parents[1].OS, parents[0].OS)
-                    child1_MS,child2_MS  = self.MS_crossover(parents[0].MS, parents[1].MS)
-                    child1 = chromossomes_fjsp(self.data_time, 
-                                                self.machines,
-                                                MS = child1_MS,
-                                                OS = child1_OS)
-
-                    child2 = chromossomes_fjsp(self.data_time, 
-                                        self.machines,
-                                        MS = child2_MS,
-                                        OS = child2_OS)
-                    # Perform mutation
-                    if random.random() < self.pm:
-                       child1.OS = self.OS_mutation(child1.OS)
-                    if random.random() < self.pm:
-                       child2.OS = self.OS_mutation(child2.OS)
-                
-                    new_pop += [child1, child2]
-                
                 else:
-                    new_pop += parents
+                    child1_OS = parents[0].OS
+                    child2_OS = parents[1].OS
 
+                # Perform cross over in MS
+                if random.random() < self.pc:
+                    child1_MS,child2_MS  = self.MS_crossover(parents[0].MS, parents[1].MS)
+                else:
+                    child1_MS,child2_MS = parents[0].MS, parents[1].MS
+
+                    
+                child1 = chromossomes_fjsp(self.data_time, 
+                                            self.machines,
+                                            MS = child1_MS,
+                                            OS = child1_OS)
+
+                child2 = chromossomes_fjsp(self.data_time, 
+                                    self.machines,
+                                    MS = child2_MS,
+                                    OS = child2_OS)
+                    
+                # Perform mutation
+                if random.random() < self.pm:
+                    child1.OS = self.OS_mutation(child1.OS)
+                if random.random() < self.pm:
+                    child2.OS = self.OS_mutation(child2.OS)
+                if random.random() < self.pm:
+                    child1.MS = self.MS_mutation(child1.MS)
+                if random.random() < self.pm:
+                    child2.MS = self.MS_mutation(child2.MS)
+                
+                new_pop += [child1, child2]
+                
             self.pop = new_pop
             self.update_scores()
-            time_series_scores.append(self.scores.mean())
-            Gen+=1
+            score_mean = self.scores.mean()
+            scores_mean.append(score_mean)
+            improvement = score_mean - last_score_mean
 
-        self.time_series_scores= time_series_scores
+            if improvement >= improvement_threshold:
+                stagnant_count=0
+            else:
+                stagnant_count+=1
+
+            last_score_mean = score_mean
+            Gen+=1
+            scores_values[Gen] = self.scores
+
+            self.scores_mean= scores_mean
+            self.scores_values = scores_values
+
+            if Gen%20==0:
+                self.plot_score()
+
         return new_pop
