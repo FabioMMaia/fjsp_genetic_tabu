@@ -212,6 +212,7 @@ class Population():
         scores_mean = []
         scores_values = {}
         Gen = 0
+        best_score_gl=np.inf
 
         self.init_pop()
         last_score_mean = self.scores.mean()
@@ -269,6 +270,13 @@ class Population():
                 
             self.pop = new_pop
             self.update_scores()
+            best_score = self.scores.min()
+
+            if best_score < best_score_gl:
+                best_score_gl  = best_score
+                best_solution = new_pop[self.scores.argmin()]
+
+
             score_mean = self.scores.mean()
             scores_mean.append(score_mean)
             improvement = score_mean - last_score_mean
@@ -287,5 +295,7 @@ class Population():
 
             if Gen%20==0:
                 self.plot_score()
+
+        self.best_chromossome = best_solution
 
         return new_pop
