@@ -135,7 +135,7 @@ class Population():
 
     def selection(self):
         aux = pd.DataFrame({'pop':self.pop, 'scores':self.scores})
-        aux.sort_values(by='scores', ascending=True)
+        aux.sort_values(by='scores', ascending=True, inplace=True)
         selection = aux.head(max(math.ceil(self.Popsize*self.pr),2))
         return selection['pop'].tolist()
     
@@ -186,7 +186,9 @@ class Population():
         return mutated_chromosome
     
     def plot_score(self):
-        pd.DataFrame(self.scores_values).boxplot();
+        # pd.DataFrame(self.scores_values).boxplot();
+        pd.DataFrame(self.scores_values).boxplot(flierprops={'marker': '^', 'markerfacecolor': 'gray', 'markersize': 2})
+        plt.xticks([])
         plt.show()
 
     def MS_mutation(self, MS):
