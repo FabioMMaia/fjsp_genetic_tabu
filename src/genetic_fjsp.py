@@ -8,7 +8,7 @@ sys.path.insert(1, r".")
 import matplotlib.pyplot as plt
 import pipeline_fjsp
 
-class chromossomes_fjsp():
+class Chromossome():
 
   def __init__(self, data_time, machines, MS=None, OS=None, check_factive=False):
 
@@ -110,7 +110,7 @@ class Population():
         scores=[]
 
         for c in tqdm.tqdm(range(self.Popsize)):
-            chromossome = chromossomes_fjsp(self.data_time, self.machines)
+            chromossome = Chromossome(self.data_time, self.machines)
             pop.append(chromossome)
             _, score = pipeline_fjsp.run(self.data_time, chromossome.OS, chromossome.MS)
             scores.append(score)
@@ -139,27 +139,88 @@ class Population():
         selection = aux.head(max(math.ceil(self.Popsize*self.pr),2))
         return selection['pop'].tolist()
     
-    def OS_cross_over_POX(self, parent1, parent2):
+    def OS_cross_over_POX(self, parent1, parent2, subset=None):
 
         distinct_values = list(set(parent1))
-        subset = random.sample(distinct_values, len(distinct_values))
+        if subset is None:
+            subset = random.sample(distinct_values, random.randint(1,len(distinct_values)))
+        len_OS = len(parent1)
 
-        child = [-1] * len(parent1)
+        # Creating child 1
+        child1 = [-1] * len_OS
         for value in subset:
             indexes = [i for i, x in enumerate(parent1) if x == value]
             for index in indexes:
-                child[index] = value
+                child1[index] = value
 
         index2 = 0
-        for i in range(len(parent1)):
-            if child[i] == -1:
+        for i in range(len_OS):
+            if child1[i] == -1:
                 while parent2[index2] in subset:
                     index2 += 1
-                child[i] = parent2[index2]
+                child1[i] = parent2[index2]
                 index2 += 1
 
-        return child
+        
+        # Creating child 2
+        child2 = [-1] * len_OS
+        for value in subset:
+            indexes = [i for i, x in enumerate(parent2) if x == value]
+            for index in indexes:
+                child2[index] = value
+
+        index2 = 0
+        for i in range(len_OS):
+            if child2[i] == -1:
+                while parent1[index2] in subset:
+                    index2 += 1
+                child2[i] = parent1[index2]
+                index2 += 1
+
+        return [child1, child2]
     
+    def OS_cross_over_JBX(self, parent1, parent2, subset=None):
+
+        distinct_values = list(set(parent1))
+        if subset is None:
+            subset = random.sample(distinct_values, random.randint(1,len(distinct_values)))
+        len_OS = len(parent1)
+
+        # Creating child 1
+        child1 = [-1] * len_OS
+        for value in subset:
+            indexes = [i for i, x in enumerate(parent1) if x == value]
+            for index in indexes:
+                child1[index] = value
+
+        index2 = 0
+        for i in range(len_OS):
+            if child1[i] == -1:
+                while parent2[index2] in subset:
+                    index2 += 1
+                child1[i] = parent2[index2]
+                index2 += 1
+
+        
+        # Creating child 2
+        child2 = [-1] * len_OS
+        subset = list(set(distinct_values) - set(subset))
+        for value in subset:
+            indexes = [i for i, x in enumerate(parent2) if x == value]
+            for index in indexes:
+                child2[index] = value
+
+        index2 = 0
+        for i in range(len_OS):
+            if child2[i] == -1:
+                while parent1[index2] in subset:
+                    index2 += 1
+                child2[i] = parent1[index2]
+                index2 += 1
+
+        return [child1, child2]
+
+
     def MS_crossover(self,parent1, parent2):
         
         # Select two distinct random crossover points
@@ -172,19 +233,41 @@ class Population():
 
         return child1, child2
     
-    def OS_mutation(self,chromosome):
+    def OS_mutation_swapping(self,chromosome):
         # Make a copy of the original chromosome for mutation
         mutated_chromosome = chromosome[:]
+        len_OS = len(chromosome)
         
         # Step 1: Select two random positions in the chromosome
         position1 = random.randint(0, len(chromosome) - 1)
         position2 = random.randint(0, len(chromosome) - 1)
+
+        while position2==position1:
+            position2 = random.randint(0, len(chromosome) - 1)
         
         # Step 2: Swap the elements at the selected positions
         mutated_chromosome[position1], mutated_chromosome[position2] = mutated_chromosome[position2], mutated_chromosome[position1]
         
         return mutated_chromosome
     
+    def OS_mutation_neighborhood(self,chromosome):
+        # Make a copy of the original chromosome for mutation
+        input_chromosome = chromosome[:]
+        
+        # Randomly select 3 positions from the chromosome
+        selected_positions = random.sample(range(len(input_chromosome)), 3)
+        
+        # Create a list of non-selected positions
+        non_selected_positions = [i for i in range(len(input_chromosome)) if i not in selected_positions]
+        
+        # Shuffle the non-selected positions
+        random.shuffle(non_selected_positions)
+        
+        # Rebuild the original chromosome with the shuffled positions
+        permuted_chromosome = [input_chromosome[i] if i in selected_positions else input_chromosome[non_selected_positions.pop(0)] for i in range(len(input_chromosome))]
+        
+        return permuted_chromosome
+        
     def plot_score(self):
         # pd.DataFrame(self.scores_values).boxplot();
         pd.DataFrame(self.scores_values).boxplot(flierprops={'marker': '^', 'markerfacecolor': 'gray', 'markersize': 2})
@@ -211,16 +294,12 @@ class Population():
 
     def pipeline_generation(self, improvement_threshold = 1):
 
-        scores_mean = []
         scores_values = {}
         Gen = 0
         best_score_gl=np.inf
 
         self.init_pop()
-        last_score_mean = self.scores.mean()
-        scores_mean.append(last_score_mean)
         stagnant_count = 0
-
         scores_values[Gen] = self.scores
 
         while Gen<self.maxGen and stagnant_count<self.maxStagnantStep:
@@ -235,8 +314,10 @@ class Population():
 
                 # Perform cross over in OS
                 if random.random() < self.pc:
-                    child1_OS = self.OS_cross_over_POX(parents[0].OS, parents[1].OS)
-                    child2_OS = self.OS_cross_over_POX(parents[1].OS, parents[0].OS)
+                    if random.random() <= 0.5:
+                        child1_OS, child2_OS = self.OS_cross_over_POX(parents[0].OS, parents[1].OS)
+                    else:
+                        child1_OS, child2_OS = self.OS_cross_over_JBX(parents[0].OS, parents[1].OS)
                 else:
                     child1_OS = parents[0].OS
                     child2_OS = parents[1].OS
@@ -248,21 +329,27 @@ class Population():
                     child1_MS,child2_MS = parents[0].MS, parents[1].MS
 
                     
-                child1 = chromossomes_fjsp(self.data_time, 
+                child1 = Chromossome(self.data_time, 
                                             self.machines,
                                             MS = child1_MS,
                                             OS = child1_OS)
 
-                child2 = chromossomes_fjsp(self.data_time, 
+                child2 = Chromossome(self.data_time, 
                                     self.machines,
                                     MS = child2_MS,
                                     OS = child2_OS)
                     
                 # Perform mutation
                 if random.random() < self.pm:
-                    child1.OS = self.OS_mutation(child1.OS)
+                    if random.random() <=0.5:
+                        child1.OS = self.OS_mutation_swapping(child1.OS)
+                    else:
+                        child1.OS = self.OS_mutation_neighborhood(child1.OS)
                 if random.random() < self.pm:
-                    child2.OS = self.OS_mutation(child2.OS)
+                    if random.random()<=0.5:
+                        child2.OS = self.OS_mutation_swapping(child2.OS)
+                    else:
+                        child2.OS = self.OS_mutation_neighborhood(child2.OS)
                 if random.random() < self.pm:
                     child1.MS = self.MS_mutation(child1.MS)
                 if random.random() < self.pm:
@@ -277,22 +364,13 @@ class Population():
             if best_score < best_score_gl:
                 best_score_gl  = best_score
                 best_solution = new_pop[self.scores.argmin()]
-
-
-            score_mean = self.scores.mean()
-            scores_mean.append(score_mean)
-            improvement = score_mean - last_score_mean
-
-            if improvement >= improvement_threshold:
                 stagnant_count=0
             else:
                 stagnant_count+=1
 
-            last_score_mean = score_mean
             Gen+=1
             scores_values[Gen] = self.scores
 
-            self.scores_mean= scores_mean
             self.scores_values = scores_values
 
             if Gen%20==0:
