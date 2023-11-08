@@ -292,7 +292,7 @@ class Population():
 
         return mutated_chromosome
 
-    def pipeline_generation(self, improvement_threshold = 1):
+    def pipeline_generation(self):
 
         scores_values = {}
         Gen = 0
@@ -377,5 +377,3 @@ class Population():
                 self.plot_score()
 
         self.best_chromossome = best_solution
-
-        return new_pop
